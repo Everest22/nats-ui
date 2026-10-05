@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: nats
+  labels:
+    app: custom-nats-ui
+    component: custom-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: custom-nats-ui
+      component: custom-backend
+  template:
+    metadata:
+      labels:
+        app: custom-nats-ui
+        component: custom-backend
+    spec:
+      containers:
+        - name: backend
+          image: <image_name>
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "8080"
+            - name: NATS_CONNECTION_TIMEOUT
+              value: "300"
+            - name: NATS_STREAM_LIST_TIMEOUT
+              value: "300"
+            - name: NATS_CONSUMER_LIST_TIMEOUT
+              value: "300"
+            - name: NATS_KV_LIST_TIMEOUT
+              value: "300"
+            - name: NATS_MESSAGE_FETCH_TIMEOUT
+              value: "300"
+          volumeMounts:
+            - name: nats-ui-data
+              mountPath: /root/.nats-ui
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /api/connections
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/connections
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+      imagePullSecrets:
+        - name: registry-secret
+      volumes:
+        - name: nats-ui-data
+          persistentVolumeClaim:
+            claimName: nats-ui-data
