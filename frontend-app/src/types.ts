@@ -143,3 +143,23 @@ export interface HealthInfo {
   jetstream?: JetStreamHealth
   slowConsumers: SlowConsumer[]
 }
+
+export interface ConsumerConfigRequest {
+  name: string
+  description: string
+  filterSubjects: string[]
+  deliverPolicy: string
+  startSeq: number
+  startTime: string
+  ackPolicy: string
+  ackWait: number
+  maxDeliver: number
+  maxAckPending: number
+  replayPolicy: string
+  maxWaiting: number
+  inactiveThreshold: number
+  deliverSubject: string
+  deliverGroup: string
+  headersOnly: boolean
+  metadata: Record<string, string>
+}

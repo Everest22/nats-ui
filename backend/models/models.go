@@ -268,3 +268,26 @@ type HealthInfo struct {
 	JetStream     *JetStreamHealth `json:"jetstream,omitempty"`
 	SlowConsumers []SlowConsumer   `json:"slowConsumers"`
 }
+
+// ConsumerConfigRequest is used for consumer create/update and returned by
+// GET /streams/:stream/consumers/:consumer to pre-populate the edit form.
+// Duration fields are in seconds; 0 means default/disabled.
+type ConsumerConfigRequest struct {
+	Name              string            `json:"name"`
+	Description       string            `json:"description"`
+	FilterSubjects    []string          `json:"filterSubjects"`
+	DeliverPolicy     string            `json:"deliverPolicy"` // all | last | new | last_per_subject | by_start_sequence | by_start_time
+	StartSeq          uint64            `json:"startSeq"`
+	StartTime         string            `json:"startTime"` // RFC3339
+	AckPolicy         string            `json:"ackPolicy"` // none | all | explicit
+	AckWait           int64             `json:"ackWait"`   // seconds
+	MaxDeliver        int               `json:"maxDeliver"`
+	MaxAckPending     int               `json:"maxAckPending"`
+	ReplayPolicy      string            `json:"replayPolicy"` // instant | original
+	MaxWaiting        int               `json:"maxWaiting"`   // pull only
+	InactiveThreshold int64             `json:"inactiveThreshold"`
+	DeliverSubject    string            `json:"deliverSubject"` // non-empty = push consumer
+	DeliverGroup      string            `json:"deliverGroup"`
+	HeadersOnly       bool              `json:"headersOnly"`
+	Metadata          map[string]string `json:"metadata"`
+}

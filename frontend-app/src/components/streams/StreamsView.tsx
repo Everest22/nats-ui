@@ -3,10 +3,12 @@ import {
   Layers, MessageSquare,
   ChevronRight, RefreshCw, Search, X,
   Radio, Send, Filter, ChevronDown, Play, Loader2,
-  Trash2, Zap, RotateCcw, CheckCircle2, Download
+  Trash2, Zap, RotateCcw, CheckCircle2, Download, Plus, Edit2
 } from 'lucide-react'
 import { useStore } from '../../stores/appStore'
 import { api } from '../../lib/api'
+import { StreamAdmin } from './StreamAdmin'
+import { ConsumerAdmin } from './ConsumerAdmin'
 import { exportMessages } from '../../lib/exportMessages'
 import type { StreamInfo, MessageEnvelope, ContentFilter, FilterType } from '../../types'
 
@@ -33,6 +35,7 @@ export function StreamsView() {
   const [limit] = useState(50)
   const [paginatedData, setPaginatedData] = useState<{ streams: StreamInfo[]; total: number; offset: number; limit: number } | null>(null)
   const [searchTimeout, setSearchTimeout] = useState<ReturnType<typeof setTimeout> | null>(null)
+  const [admin, setAdmin] = useState<{ tab: 'create' | 'manage'; edit?: string } | null>(null)
 
   const loadPaginatedStreams = async (searchQuery: string, pageOffset: number) => {
     if (!session?.connectionId) return
@@ -119,6 +122,13 @@ export function StreamsView() {
               }}>
                 <RefreshCw size={13} style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }} />
               </button>
+              <button onClick={() => setAdmin({ tab: 'create' })} style={{
+                background: 'var(--accent)', border: 'none', borderRadius: '7px',
+                padding: '7px 12px', cursor: 'pointer', color: '#fff', fontSize: '12px',
+                fontWeight: 500, display: 'flex', alignItems: 'center', gap: '5px',
+              }}>
+                <Plus size={13} /> Create Stream
+              </button>
             </div>
           </div>
 
@@ -150,6 +160,7 @@ export function StreamsView() {
                       connectionId={session?.connectionId || ''}
                       onSelect={() => setSelected(stream)}
                       onDeleted={() => loadPaginatedStreams(search, offset)}
+                      onEdit={() => setAdmin({ tab: 'manage', edit: stream.name })}
                     />
                   ))}
                 </tbody>
@@ -176,9 +187,22 @@ export function StreamsView() {
               stream={selected}
               connectionId={session.connectionId}
               onClose={() => setSelected(null)}
+              onEdit={() => setAdmin({ tab: 'manage', edit: selected.name })}
             />
           )}
         </div>
+      )}
+
+      {admin && session && (
+        <StreamAdmin
+          key={`${admin.tab}-${admin.edit ?? ''}`}
+          connectionId={session.connectionId}
+          streams={streams}
+          initialTab={admin.tab}
+          initialEditStream={admin.edit}
+          onClose={() => setAdmin(null)}
+          onRefresh={() => loadPaginatedStreams(search, offset)}
+        />
       )}
     </div>
   )
@@ -226,9 +250,9 @@ function StreamGridSkeleton() {
   )
 }
 
-function StreamGridRow({ stream, connectionId, onSelect, onDeleted }: {
+function StreamGridRow({ stream, connectionId, onSelect, onDeleted, onEdit }: {
   stream: StreamInfo; connectionId: string;
-  onSelect: () => void; onDeleted: () => void;
+  onSelect: () => void; onDeleted: () => void; onEdit: () => void;
 }) {
   const [hover, setHover] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -344,6 +368,13 @@ function StreamGridRow({ stream, connectionId, onSelect, onDeleted }: {
         <td style={{ padding: '12px 10px', textAlign: 'center', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
           {hover && (
             <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+              <button onClick={onEdit} style={{
+                display: 'flex', alignItems: 'center', gap: '3px',
+                padding: '3px 8px', borderRadius: '4px', fontSize: '11px', cursor: 'pointer',
+                background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.25)', color: 'var(--accent)',
+              }}>
+                <Edit2 size={11} /> Edit
+              </button>
               <button onClick={handlePurge} style={{
                 display: 'flex', alignItems: 'center', gap: '3px',
                 padding: '3px 8px', borderRadius: '4px', fontSize: '11px', cursor: 'pointer',
@@ -378,8 +409,8 @@ function StreamGridRow({ stream, connectionId, onSelect, onDeleted }: {
 
 type DetailTab = 'messages' | 'consumers' | 'info'
 
-function StreamDetail({ stream, connectionId, onClose }: {
-  stream: StreamInfo; connectionId: string; onClose: () => void
+function StreamDetail({ stream, connectionId, onClose, onEdit }: {
+  stream: StreamInfo; connectionId: string; onClose: () => void; onEdit: () => void
 }) {
   const { setActiveView, setPrefilledSubject } = useStore()
   const [tab, setTab] = useState<DetailTab>('messages')
@@ -471,6 +502,9 @@ function StreamDetail({ stream, connectionId, onClose }: {
           </button>
           <button onClick={goPublish} style={actionBtnStyle('var(--green)')}>
             <Send size={13} /> Publish to Stream
+          </button>
+          <button onClick={onEdit} style={actionBtnStyle('var(--amber)')}>
+            <Edit2 size={13} /> Edit Stream
           </button>
         </div>
 
@@ -744,6 +778,7 @@ function ConsumersTab({ connectionId, streamName }: { connectionId: string; stre
   const [consumers, setConsumers] = useState<StreamConsumer[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [admin, setAdmin] = useState<{ edit?: string } | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -764,7 +799,14 @@ function ConsumersTab({ connectionId, streamName }: { connectionId: string; stre
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '10px' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginBottom: '10px' }}>
+        <button onClick={() => setAdmin({})} style={{
+          background: 'var(--accent)', border: 'none', borderRadius: '7px', padding: '6px 12px',
+          cursor: 'pointer', color: '#fff', fontSize: '12px', fontWeight: 500,
+          display: 'flex', alignItems: 'center', gap: '5px',
+        }}>
+          <Plus size={13} /> Create Consumer
+        </button>
         <button onClick={load} disabled={loading} style={{
           background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: '7px',
           padding: '6px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center',
@@ -787,6 +829,7 @@ function ConsumersTab({ connectionId, streamName }: { connectionId: string; stre
               <th style={head}>Filter subject</th>
               <th style={{ ...head, textAlign: 'right' }}>Lag (pending)</th>
               <th style={{ ...head, textAlign: 'right' }}>Ack pending</th>
+              <th style={head} />
             </tr>
           </thead>
           <tbody>
@@ -799,10 +842,29 @@ function ConsumersTab({ connectionId, streamName }: { connectionId: string; stre
                   {c.pendingMessages.toLocaleString()}
                 </td>
                 <td style={{ ...cell, textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>{c.ackPending.toLocaleString()}</td>
+                <td style={{ ...cell, textAlign: 'right' }}>
+                  <button onClick={() => setAdmin({ edit: c.name })} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '3px 8px',
+                    borderRadius: '4px', fontSize: '11px', cursor: 'pointer',
+                    background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.25)', color: 'var(--accent)',
+                  }}>
+                    <Edit2 size={11} /> Edit
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+      {admin && (
+        <ConsumerAdmin
+          key={admin.edit ?? 'create'}
+          connectionId={connectionId}
+          streamName={streamName}
+          editConsumer={admin.edit}
+          onClose={() => setAdmin(null)}
+          onSaved={load}
+        />
       )}
     </div>
   )
