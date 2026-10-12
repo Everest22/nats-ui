@@ -1,4 +1,4 @@
-import type { Connection, ServerInfo, StreamInfo, StreamConfigRequest, StreamFullConfig, ContentFilter, MessageEnvelope, HealthInfo } from '../types'
+import type { Connection, ServerInfo, StreamInfo, StreamConfigRequest, StreamFullConfig, ContentFilter, MessageEnvelope, HealthInfo, ConsumerConfigRequest } from '../types'
 
 const BASE = '/api'
 let globalTimeout = 30
@@ -92,11 +92,12 @@ export const api = {
     if (search) params.append('search', search)
     return req<{ consumers: any[]; total: number; offset: number; limit: number }>(`/connections/${id}/consumers?${params}`)
   },
-  createConsumer: (id: string, stream: string, name: string, filter: string, deliverPolicy: string, ackPolicy: string) =>
-    req<void>(`/connections/${id}/streams/${stream}/consumers`, {
-      method: 'POST',
-      body: JSON.stringify({ name, filter, deliverPolicy, ackPolicy }),
-    }),
+  createConsumer: (id: string, stream: string, config: ConsumerConfigRequest) =>
+    req<void>(`/connections/${id}/streams/${stream}/consumers`, { method: 'POST', body: JSON.stringify(config) }),
+  getConsumerConfig: (id: string, stream: string, consumer: string) =>
+    req<ConsumerConfigRequest>(`/connections/${id}/streams/${stream}/consumers/${consumer}`),
+  editConsumer: (id: string, stream: string, consumer: string, config: ConsumerConfigRequest) =>
+    req<void>(`/connections/${id}/streams/${stream}/consumers/${consumer}`, { method: 'PUT', body: JSON.stringify(config) }),
   deleteConsumer: (id: string, stream: string, consumer: string) =>
     req<void>(`/connections/${id}/streams/${stream}/consumers/${consumer}`, { method: 'DELETE' }),
   pauseConsumer: (id: string, stream: string, consumer: string) =>

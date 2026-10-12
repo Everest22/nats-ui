@@ -1475,28 +1475,196 @@ func (b *Bridge) GetConsumers(connectionID, streamName string) ([]models.Consume
 	return consumers, nil
 }
 
-func (b *Bridge) CreateConsumer(connectionID, streamName, consumerName, filterSubject, deliverPolicy, ackPolicy string) error {
+func (b *Bridge) jsFor(connectionID string) (*ActiveConnection, error) {
 	b.mu.RLock()
 	ac, ok := b.connections[connectionID]
 	b.mu.RUnlock()
-
 	if !ok {
-		return fmt.Errorf("not connected")
+		return nil, fmt.Errorf("not connected")
 	}
-
 	if ac.JS == nil {
-		return fmt.Errorf("JetStream not available")
+		return nil, fmt.Errorf("JetStream not available")
+	}
+	return ac, nil
+}
+
+func deliverPolicyName(p gonats.DeliverPolicy) string {
+	switch p {
+	case gonats.DeliverLastPolicy:
+		return "last"
+	case gonats.DeliverNewPolicy:
+		return "new"
+	case gonats.DeliverLastPerSubjectPolicy:
+		return "last_per_subject"
+	case gonats.DeliverByStartSequencePolicy:
+		return "by_start_sequence"
+	case gonats.DeliverByStartTimePolicy:
+		return "by_start_time"
+	}
+	return "all"
+}
+
+func ackPolicyName(p gonats.AckPolicy) string {
+	switch p {
+	case gonats.AckNonePolicy:
+		return "none"
+	case gonats.AckAllPolicy:
+		return "all"
+	}
+	return "explicit"
+}
+
+func replayPolicyName(p gonats.ReplayPolicy) string {
+	if p == gonats.ReplayOriginalPolicy {
+		return "original"
+	}
+	return "instant"
+}
+
+func (b *Bridge) GetConsumerConfig(connectionID, streamName, consumerName string) (*models.ConsumerConfigRequest, error) {
+	ac, err := b.jsFor(connectionID)
+	if err != nil {
+		return nil, err
+	}
+	ci, err := ac.JS.ConsumerInfo(streamName, consumerName)
+	if err != nil {
+		return nil, fmt.Errorf("consumer not found: %w", err)
+	}
+	c := ci.Config
+	name := c.Name
+	if name == "" {
+		name = c.Durable
+	}
+	filters := c.FilterSubjects
+	if len(filters) == 0 && c.FilterSubject != "" {
+		filters = []string{c.FilterSubject}
+	}
+	out := &models.ConsumerConfigRequest{
+		Name:              name,
+		Description:       c.Description,
+		FilterSubjects:    filters,
+		DeliverPolicy:     deliverPolicyName(c.DeliverPolicy),
+		StartSeq:          c.OptStartSeq,
+		AckPolicy:         ackPolicyName(c.AckPolicy),
+		AckWait:           int64(c.AckWait / time.Second),
+		MaxDeliver:        c.MaxDeliver,
+		MaxAckPending:     c.MaxAckPending,
+		ReplayPolicy:      replayPolicyName(c.ReplayPolicy),
+		MaxWaiting:        c.MaxWaiting,
+		InactiveThreshold: int64(c.InactiveThreshold / time.Second),
+		DeliverSubject:    c.DeliverSubject,
+		DeliverGroup:      c.DeliverGroup,
+		HeadersOnly:       c.HeadersOnly,
+		Metadata:          c.Metadata,
+	}
+	if c.OptStartTime != nil {
+		out.StartTime = c.OptStartTime.Format(time.RFC3339)
+	}
+	return out, nil
+}
+
+// applyConsumerRequest copies the request onto cfg. On update only the fields
+// NATS allows to change are applied.
+func applyConsumerRequest(cfg *gonats.ConsumerConfig, req models.ConsumerConfigRequest, create bool) error {
+	cfg.Description = req.Description
+	cfg.FilterSubject = ""
+	cfg.FilterSubjects = nil
+	switch len(req.FilterSubjects) {
+	case 0:
+	case 1:
+		cfg.FilterSubject = req.FilterSubjects[0]
+	default:
+		cfg.FilterSubjects = req.FilterSubjects
+	}
+	cfg.AckWait = time.Duration(req.AckWait) * time.Second
+	cfg.MaxDeliver = req.MaxDeliver
+	cfg.MaxAckPending = req.MaxAckPending
+	cfg.MaxWaiting = req.MaxWaiting
+	cfg.InactiveThreshold = time.Duration(req.InactiveThreshold) * time.Second
+	cfg.Metadata = req.Metadata
+	switch req.ReplayPolicy {
+	case "original":
+		cfg.ReplayPolicy = gonats.ReplayOriginalPolicy
+	default:
+		cfg.ReplayPolicy = gonats.ReplayInstantPolicy
+	}
+	if !create {
+		return nil
 	}
 
-	_, err := ac.JS.AddConsumer(streamName, &gonats.ConsumerConfig{
-		Name:          consumerName,
-		FilterSubject: filterSubject,
-		Durable:       consumerName,
-	})
-	if err == nil {
-		ac.cache.invalidate()
+	cfg.Name = req.Name
+	cfg.Durable = req.Name
+	cfg.DeliverSubject = req.DeliverSubject
+	cfg.DeliverGroup = req.DeliverGroup
+	cfg.HeadersOnly = req.HeadersOnly
+	switch req.AckPolicy {
+	case "none":
+		cfg.AckPolicy = gonats.AckNonePolicy
+	case "all":
+		cfg.AckPolicy = gonats.AckAllPolicy
+	default:
+		cfg.AckPolicy = gonats.AckExplicitPolicy
 	}
-	return err
+	switch req.DeliverPolicy {
+	case "last":
+		cfg.DeliverPolicy = gonats.DeliverLastPolicy
+	case "new":
+		cfg.DeliverPolicy = gonats.DeliverNewPolicy
+	case "last_per_subject":
+		cfg.DeliverPolicy = gonats.DeliverLastPerSubjectPolicy
+	case "by_start_sequence":
+		cfg.DeliverPolicy = gonats.DeliverByStartSequencePolicy
+		cfg.OptStartSeq = req.StartSeq
+	case "by_start_time":
+		t, err := time.Parse(time.RFC3339, req.StartTime)
+		if err != nil {
+			return fmt.Errorf("invalid start time: %w", err)
+		}
+		cfg.DeliverPolicy = gonats.DeliverByStartTimePolicy
+		cfg.OptStartTime = &t
+	default:
+		cfg.DeliverPolicy = gonats.DeliverAllPolicy
+	}
+	return nil
+}
+
+func (b *Bridge) CreateConsumer(connectionID, streamName string, req models.ConsumerConfigRequest) error {
+	ac, err := b.jsFor(connectionID)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		return fmt.Errorf("consumer name is required")
+	}
+	cfg := &gonats.ConsumerConfig{}
+	if err := applyConsumerRequest(cfg, req, true); err != nil {
+		return err
+	}
+	if _, err := ac.JS.AddConsumer(streamName, cfg); err != nil {
+		return err
+	}
+	ac.cache.invalidate()
+	return nil
+}
+
+func (b *Bridge) EditConsumer(connectionID, streamName, consumerName string, req models.ConsumerConfigRequest) error {
+	ac, err := b.jsFor(connectionID)
+	if err != nil {
+		return err
+	}
+	ci, err := ac.JS.ConsumerInfo(streamName, consumerName)
+	if err != nil {
+		return fmt.Errorf("consumer not found: %w", err)
+	}
+	cfg := ci.Config
+	if err := applyConsumerRequest(&cfg, req, false); err != nil {
+		return err
+	}
+	if _, err := ac.JS.UpdateConsumer(streamName, &cfg); err != nil {
+		return err
+	}
+	ac.cache.invalidate()
+	return nil
 }
 
 func (b *Bridge) DeleteConsumer(connectionID, streamName, consumerName string) error {

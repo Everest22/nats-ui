@@ -51,6 +51,8 @@ func (h *Handler) RegisterRoutes(app *fiber.App) {
 	api.Put("/connections/:id/streams/:stream", h.editStream)
 	api.Get("/connections/:id/streams/:stream/consumers", h.getConsumers)
 	api.Post("/connections/:id/streams/:stream/consumers", h.createConsumer)
+	api.Get("/connections/:id/streams/:stream/consumers/:consumer", h.getConsumerConfig)
+	api.Put("/connections/:id/streams/:stream/consumers/:consumer", h.editConsumer)
 	api.Delete("/connections/:id/streams/:stream/consumers/:consumer", h.deleteConsumer)
 	api.Post("/connections/:id/streams/:stream/consumers/:consumer/pause", h.pauseConsumer)
 	api.Post("/connections/:id/streams/:stream/consumers/:consumer/resume", h.resumeConsumer)
@@ -305,19 +307,33 @@ func (h *Handler) getConsumers(c *fiber.Ctx) error {
 }
 
 func (h *Handler) createConsumer(c *fiber.Ctx) error {
-	var req struct {
-		Name          string `json:"name"`
-		Filter        string `json:"filter"`
-		DeliverPolicy string `json:"deliverPolicy"`
-		AckPolicy     string `json:"ackPolicy"`
-	}
+	var req models.ConsumerConfigRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
-	if err := h.bridge.CreateConsumer(c.Params("id"), c.Params("stream"), req.Name, req.Filter, req.DeliverPolicy, req.AckPolicy); err != nil {
+	if err := h.bridge.CreateConsumer(c.Params("id"), c.Params("stream"), req); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"status": "created"})
+}
+
+func (h *Handler) getConsumerConfig(c *fiber.Ctx) error {
+	cfg, err := h.bridge.GetConsumerConfig(c.Params("id"), c.Params("stream"), c.Params("consumer"))
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(cfg)
+}
+
+func (h *Handler) editConsumer(c *fiber.Ctx) error {
+	var req models.ConsumerConfigRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
+	if err := h.bridge.EditConsumer(c.Params("id"), c.Params("stream"), c.Params("consumer"), req); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"status": "updated"})
 }
 
 func (h *Handler) deleteConsumer(c *fiber.Ctx) error {

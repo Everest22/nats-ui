@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react'
 import {
   Users, RefreshCw, Search, Trash2, Layers, AlertCircle, Clock,
   X, MessageSquare, Play, Loader2, ChevronRight, ChevronDown, RotateCcw, CheckCircle2, Filter as FilterIcon,
-  Download,
+  Download, Plus, Edit2,
 } from 'lucide-react'
 import { useStore } from '../../stores/appStore'
 import { api } from '../../lib/api'
+import { ConsumerAdmin } from './ConsumerAdmin'
 import { exportMessages } from '../../lib/exportMessages'
 import type { MessageEnvelope } from '../../types'
 
@@ -39,7 +40,8 @@ function subjectMatches(subject: string, filter: string): boolean {
 }
 
 export function ConsumersView() {
-  const { session } = useStore()
+  const { session, streams, loadStreams } = useStore()
+  const [admin, setAdmin] = useState<{ edit?: Consumer } | null>(null)
   const [selected, setSelected] = useState<Consumer | null>(null)
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -94,6 +96,7 @@ export function ConsumersView() {
       setOffset(0)
       setSearch('')
       load('', 0)
+      loadStreams()
     }
   }, [session?.connectionId])
 
@@ -151,6 +154,16 @@ export function ConsumersView() {
           <RefreshCw size={12} style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }} />
           Refresh
         </button>
+        <button
+          onClick={() => setAdmin({})}
+          style={{
+            background: 'var(--accent)', border: 'none', borderRadius: '7px', padding: '7px 12px',
+            cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', gap: '5px',
+            fontSize: '12px', fontWeight: 500,
+          }}
+        >
+          <Plus size={13} /> Create Consumer
+        </button>
       </div>
 
       {error && (
@@ -181,7 +194,7 @@ export function ConsumersView() {
               <ColHead style={{ width: '70px', textAlign: 'center' }}>Lag</ColHead>
               <ColHead style={{ width: '80px', textAlign: 'center' }}>Waiting</ColHead>
               <ColHead style={{ width: '90px', textAlign: 'center' }}>Ack Policy</ColHead>
-              <ColHead style={{ width: '40px' }} />
+              <ColHead style={{ width: '70px' }} />
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
@@ -192,6 +205,7 @@ export function ConsumersView() {
                   deleting={deletingId === `${c.streamName}/${c.name}`}
                   onSelect={() => setSelected(c)}
                   onDelete={() => handleDelete(c)}
+                  onEdit={() => setAdmin({ edit: c })}
                 />
               ))}
             </div>
@@ -212,12 +226,24 @@ export function ConsumersView() {
           </>
         )}
       </div>
+
+      {admin && session && (
+        <ConsumerAdmin
+          key={admin.edit ? `${admin.edit.streamName}/${admin.edit.name}` : 'create'}
+          connectionId={session.connectionId}
+          streamName={admin.edit?.streamName}
+          streamNames={streams.map(st => st.name)}
+          editConsumer={admin.edit?.name}
+          onClose={() => setAdmin(null)}
+          onSaved={() => load(search, offset)}
+        />
+      )}
     </div>
   )
 }
 
-function ConsumerRow({ consumer: c, deleting, onSelect, onDelete }: {
-  consumer: Consumer; deleting: boolean; onSelect: () => void; onDelete: () => void
+function ConsumerRow({ consumer: c, deleting, onSelect, onDelete, onEdit }: {
+  consumer: Consumer; deleting: boolean; onSelect: () => void; onDelete: () => void; onEdit: () => void
 }) {
   const isPaused = !!c.pausedUntil
   const lag = c.ackPending
@@ -314,8 +340,20 @@ function ConsumerRow({ consumer: c, deleting, onSelect, onDelete }: {
         <AckBadge policy={c.ackPolicy} />
       </div>
 
-      {/* Delete */}
-      <div style={{ width: '40px', display: 'flex', justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
+      {/* Edit / Delete */}
+      <div style={{ width: '70px', display: 'flex', justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
+        <button
+          onClick={onEdit}
+          title="Edit consumer"
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)',
+            padding: '4px', borderRadius: '5px', display: 'flex', alignItems: 'center',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.background = 'rgba(59,130,246,0.08)' }}
+          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-dim)'; e.currentTarget.style.background = 'none' }}
+        >
+          <Edit2 size={13} />
+        </button>
         <button
           onClick={onDelete}
           disabled={deleting}

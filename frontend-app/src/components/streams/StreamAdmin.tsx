@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { Plus, X, Trash2, Pause, Play, ChevronDown, ChevronRight, Edit2 } from 'lucide-react'
 import { api } from '../../lib/api'
 import type { StreamInfo, StreamConfigRequest, StreamFullConfig } from '../../types'
@@ -8,6 +9,8 @@ interface StreamAdminProps {
   onClose: () => void
   streams: StreamInfo[]
   onRefresh: () => void
+  initialTab?: 'manage' | 'create'
+  initialEditStream?: string
 }
 
 // ── Shared form defaults ──────────────────────────────────────────────────────
@@ -76,8 +79,8 @@ function fullConfigToRequest(full: StreamFullConfig): StreamConfigRequest {
 
 // ── Root component ────────────────────────────────────────────────────────────
 
-export function StreamAdmin({ connectionId, onClose, streams, onRefresh }: StreamAdminProps) {
-  const [activeTab, setActiveTab] = useState<'manage' | 'create' | 'edit'>('manage')
+export function StreamAdmin({ connectionId, onClose, streams, onRefresh, initialTab = 'manage', initialEditStream }: StreamAdminProps) {
+  const [activeTab, setActiveTab] = useState<'manage' | 'create' | 'edit'>(initialTab)
   const [editingStream, setEditingStream] = useState<string | null>(null)
   const [editConfig, setEditConfig] = useState<StreamConfigRequest | null>(null)
   const [loading, setLoading] = useState(false)
@@ -85,6 +88,10 @@ export function StreamAdmin({ connectionId, onClose, streams, onRefresh }: Strea
   const contentRef = useRef<HTMLDivElement>(null)
 
   const scrollTop = () => contentRef.current?.scrollTo({ top: 0 })
+
+  useEffect(() => {
+    if (initialEditStream) handleEditClick(initialEditStream)
+  }, [])
 
   const handleCreate = async () => {
     if (!createConfig.name.trim()) { alert('Stream name is required'); return }
@@ -133,7 +140,7 @@ export function StreamAdmin({ connectionId, onClose, streams, onRefresh }: Strea
     }
   }
 
-  return (
+  return createPortal(
     <div style={{
       position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
       background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center',
@@ -208,7 +215,8 @@ export function StreamAdmin({ connectionId, onClose, streams, onRefresh }: Strea
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -519,11 +527,11 @@ const inputStyle: React.CSSProperties = {
   border: '1px solid var(--border)', borderRadius: '6px',
   color: 'var(--text-primary)', fontSize: '13px', outline: 'none', boxSizing: 'border-box',
 }
-const textareaStyle: React.CSSProperties = {
+export const textareaStyle: React.CSSProperties = {
   ...inputStyle, resize: 'vertical', fontFamily: 'var(--font-mono)',
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+export function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
       <div style={{
@@ -536,7 +544,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-function Row({ label, children, hint, required, note }: {
+export function Row({ label, children, hint, required, note }: {
   label: string; children: React.ReactNode; hint?: string; required?: boolean; note?: string
 }) {
   return (
@@ -553,7 +561,7 @@ function Row({ label, children, hint, required, note }: {
   )
 }
 
-function Input({ value, onChange, placeholder, mono, disabled }: {
+export function Input({ value, onChange, placeholder, mono, disabled }: {
   value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean; disabled?: boolean
 }) {
   return (
@@ -563,7 +571,7 @@ function Input({ value, onChange, placeholder, mono, disabled }: {
   )
 }
 
-function Select({ value, onChange, options, disabled }: {
+export function Select({ value, onChange, options, disabled }: {
   value: string; onChange: (v: string) => void;
   options: [string, string][]; disabled?: boolean
 }) {
@@ -576,7 +584,7 @@ function Select({ value, onChange, options, disabled }: {
   )
 }
 
-function NumberInput({ value, onChange, min, max, placeholder, disabled }: {
+export function NumberInput({ value, onChange, min, max, placeholder, disabled }: {
   value: number; onChange: (v: number) => void; min?: number; max?: number; placeholder?: string; disabled?: boolean
 }) {
   return (
@@ -587,7 +595,7 @@ function NumberInput({ value, onChange, min, max, placeholder, disabled }: {
   )
 }
 
-function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+export function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', height: '32px' }}>
       <button
